@@ -4,14 +4,14 @@ A simple command-line utility to display directory contents in a tree-like forma
 
 ## Features
 
-· Recursively lists files and directories in a tree structure
-· Colorized output for directories (blue) and files (green)
-· Options to show hidden files, file sizes, and limit depth
+· Recursively lists files and directories in a tree structure \
+· Colorized output for directories (blue) and files (green) \
+· Options to show hidden files, file sizes, and limit depth \
 · Cross-platform (uses C++17 filesystem library)
 
 ## Requirements
 
-· C++17 compatible compiler (e.g., GCC 8+, Clang 7+, MSVC 2017+)
+· C++17 compatible compiler (e.g., GCC 8+, Clang 7+, MSVC 2017+) \
 · Standard C++ library with filesystem support
 
 ## Building and Installation
