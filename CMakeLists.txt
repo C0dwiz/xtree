@@ -16,6 +16,7 @@ else()
 endif()
 
 include_directories(${CMAKE_SOURCE_DIR}/include)
+include_directories(${CMAKE_SOURCE_DIR}/src)
 
 set(SOURCES
   ${CMAKE_SOURCE_DIR}/main.cpp
@@ -33,6 +34,7 @@ endif()
 add_executable(xtree ${SOURCES})
 
 install(TARGETS xtree RUNTIME DESTINATION bin)
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/include/ DESTINATION include)
 
 include(CTest)
 enable_testing()
