@@ -16,27 +16,27 @@ else()
 endif()
 
 set(SOURCES
-  ${CMAKE_SOURCE_DIR}/main.cpp
-  ${CMAKE_SOURCE_DIR}/src/xtree_tools/printer.cpp
-  ${CMAKE_SOURCE_DIR}/src/xtree_tools/utils.cpp
+  main.cpp
+  src/xtree_tools/printer.cpp
+  src/xtree_tools/utils.cpp
 )
 
 set(HEADERS
-  ${CMAKE_SOURCE_DIR}/include/xtree/git.h
-  ${CMAKE_SOURCE_DIR}/include/xtree/options.h
-  ${CMAKE_SOURCE_DIR}/include/xtree/printer.h
-  ${CMAKE_SOURCE_DIR}/include/xtree/utils.h
+  include/xtree/git.h
+  include/xtree/options.h
+  include/xtree/printer.h
+  include/xtree/utils.h
 )
 
 if (ENABLE_GIT)
-  list(APPEND SOURCES ${CMAKE_SOURCE_DIR}/src/xtree_tools/git.cpp)
+  list(APPEND SOURCES src/xtree_tools/git.cpp)
   add_compile_definitions(HAVE_GIT=1)
 else()
-  list(APPEND SOURCES ${CMAKE_SOURCE_DIR}/src/xtree_tools/git_stub.cpp)
+  list(APPEND SOURCES src/xtree_tools/git_stub.cpp)
 endif()
 
 add_executable(xtree ${SOURCES} ${HEADERS})
-target_include_directories(xtree PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(xtree PRIVATE include src)
 
 install(TARGETS xtree RUNTIME DESTINATION bin)
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/include/ DESTINATION include)
