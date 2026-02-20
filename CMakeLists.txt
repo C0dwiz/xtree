@@ -9,7 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(ENABLE_GIT "Enable git-related features (git status, author/date)" ON)
 
-if (MSVC)
+if(MSVC)
   add_compile_options(/W4)
 else()
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -21,6 +21,13 @@ set(SOURCES
   ${CMAKE_SOURCE_DIR}/src/xtree_tools/utils.cpp
 )
 
+set(HEADERS
+  ${CMAKE_SOURCE_DIR}/include/xtree/git.h
+  ${CMAKE_SOURCE_DIR}/include/xtree/options.h
+  ${CMAKE_SOURCE_DIR}/include/xtree/printer.h
+  ${CMAKE_SOURCE_DIR}/include/xtree/utils.h
+)
+
 if (ENABLE_GIT)
   list(APPEND SOURCES ${CMAKE_SOURCE_DIR}/src/xtree_tools/git.cpp)
   add_compile_definitions(HAVE_GIT=1)
@@ -28,7 +35,7 @@ else()
   list(APPEND SOURCES ${CMAKE_SOURCE_DIR}/src/xtree_tools/git_stub.cpp)
 endif()
 
-add_executable(xtree ${SOURCES})
+add_executable(xtree ${SOURCES} ${HEADERS})
 target_include_directories(xtree PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/src)
 
 install(TARGETS xtree RUNTIME DESTINATION bin)
@@ -39,7 +46,7 @@ enable_testing()
 add_test(NAME smoke_test COMMAND $<TARGET_FILE:xtree> --help)
 
 if(IS_DIRECTORY "${CMAKE_SOURCE_DIR}/tests")
-    add_subdirectory(tests)
+  add_subdirectory(tests)
 endif()
 
 include(CPack)
