@@ -1,144 +1,167 @@
 # xtree
 
-A simple command-line utility to display directory contents in a tree-like format, written in C++17.
+> xtree — a focused, fast and maintainable C++17 command-line utility that
+> prints directory contents in a compact, human-readable tree format.
+
+—
+
+Table of Contents
+
+- [About](#about)
+- [Features](#features)
+- [Requirements](#requirements)
+- [Quick Start](#quick-start)
+- [Build](#build)
+- [Usage](#usage)
+- [Options](#options)
+- [Examples](#examples)
+- [Development](#development)
+- [Packaging](#packaging)
+- [License](#license)
+- [Contributing](#contributing)
+
+## About
+
+`xtree` is designed for developers and CI systems that need a concise view of a
+project tree with optional metadata such as file sizes, Git status and simple
+project statistics. The codebase is modular, follows modern C++ idioms, and is
+set up for reproducible builds and automated testing.
 
 ## Features
 
-· Recursively lists files and directories in a tree structure \
-· Colorized output for directories (blue) and files (green) \
-· Options to show hidden files, file sizes, and limit recursion depth \
-· Display git status for tracked and untracked files \
-· Show directory sizes (disk usage) \
-· Handle symbolic links with optional following \
-· Sort output: directories first, then files, both alphabetically \
-· Robust error handling with informative messages \
-· Cross-platform (uses C++17 filesystem library)
+- Recursive directory tree with clear ASCII branches
+- Colorized output (configurable) for directories, files and status flags
+- Optional file sizes and directory disk-usage (DU)
+- Git integration: show file status (M/A/D/R/C/U), ignored files, branches,
+ and last commit author/date
+- Project statistics option (`--stats`) to report total files and total lines
+- Respect `.gitignore`-style exclusions via `--ignore`
+- Cross-platform (uses std::filesystem) and small dependency surface
 
 ## Requirements
 
-· C++17 compatible compiler (e.g., GCC 8+, Clang 7+, MSVC 2017+) \
-· Standard C++ library with filesystem support
+- A C++17-capable compiler (GCC 8+, Clang 7+, MSVC 2017+)
+- CMake >= 3.10 (recommended for full build, tests and packaging)
 
-## Building and Installation
+## Quick Start
 
-### Clone Git & cd
-
-```bash
-git clone https://github.com/C0dwiz/xtree && cd xtree
-```
-
-### Compile
+Clone the repository and perform a typical CMake build:
 
 ```bash
-g++ -std=c++17 -o xtree main.cpp
+git clone https://github.com/C0dwiz/xtree.git
+cd xtree
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j$(nproc)
 ```
 
-### Install system-wide (Linux / macOS)
+Alternatively, a simple Makefile is provided for quick builds:
 
 ```bash
-sudo cp xtree /usr/local/bin/
+make -j$(nproc)
 ```
 
-After installation, you can run xtree from anywhere in your terminal.
+## Build (details)
 
-### Install locally (without sudo)
+Run tests after building:
 
 ```bash
-mkdir -p ~/.local/bin
-cp xtree ~/.local/bin/
+ctest --test-dir build --output-on-failure
 ```
 
-Make sure ~/.local/bin is in your PATH.
-
-### Usage
+Install the binary system-wide:
 
 ```bash
-xtree [options] [directory]
+sudo cmake --install build --prefix /usr/local
 ```
 
-If no directory is specified, the current working directory (.) is used.
-
-# Options
-
-## Option Description
-
-```
-Options:
-  --help              Show this help message
-  --all               Show hidden files (starting with dot)
-  --size              Show file sizes
-  --no-color          Disable colored output
-  --depth N           Limit recursion depth (N levels)
-  --ignore="p1, p2"   Ignore files with given extensions or folders with 
-                      exact names (comma-separated)
-  --git               Show Git status: M(odified), A(dded), D(eleted), 
-                      R(enamed), C(opied), U(ntracked)
-  --du                Show directory sizes (total of all files inside)
-  --follow-links      Follow symbolic links (off by default)
-
-If PATH is omitted, current directory is used.
-```
-
-# Examples
-
-List current directory with default settings:
+Or install to a local user prefix:
 
 ```bash
-xtree
+cmake --install build --prefix "$HOME/.local"
 ```
 
-List a specific directory with hidden files and sizes:
+## Usage
+
+```text
+xtree [OPTIONS] [PATH]
+```
+
+If PATH is omitted, `.` (current directory) is used.
+
+## Options
+
+The most commonly used options are listed below; run `xtree --help` for the
+complete set.
+
+| Option | Description |
+|---|---|
+| `--help` | Show help message |
+| `--all` | Show hidden files (dotfiles) |
+| `--size` | Display file sizes next to files |
+| `--du` | Show directory sizes (summed file sizes) |
+| `--no-color` | Disable ANSI color codes in output |
+| `--depth N` | Limit recursion to N levels |
+| `--ignore="ext, name"` | Ignore files by extension or exact name (comma-separated) |
+| `--git` | Enable Git-aware output (status, branches, author/date) |
+| `--follow-links` | Follow symbolic links when descending directories |
+| `--stats` | Print total number of files and total lines at the end |
+
+## Examples
+
+Show current tree with sizes and hidden files:
 
 ```bash
-xtree --all --size /home/user/projects
+./build/xtree --all --size
 ```
 
-Limit output to 2 levels deep:
+Show Git statuses, skip `build/` and `.git/`, and print project stats:
 
 ```bash
-xtree --depth 2 /var/log
+./build/xtree --git --ignore="build,.git" --stats
 ```
 
-Show git status and directory sizes:
+Limit output to two directory levels and disable color:
 
 ```bash
-xtree --git --du
+./build/xtree --depth 2 --no-color
 ```
 
-Ignore specific file types and follow symbolic links:
+## Development
+
+- Code formatting: a `.clang-format` file is present. Format tracked source
+ files with:
 
 ```bash
-xtree --ignore="txt,log,tmp" --follow-links
+git ls-files '*.cpp' '*.cc' '*.c' '*.hpp' '*.hh' '*.h' | xargs clang-format -style=file -i
 ```
 
-Show directory without colors (useful for piping):
+- Tests are integrated via CTest. Run `ctest` after building.
+- The project provides a minimal Makefile and a full CMake build that enables
+ testing and packaging via CPack.
+
+## Packaging
+
+After configuring the build directory, use CPack inside `build/` to generate
+archives or native packages (TGZ/DEB):
 
 ```bash
-xtree --no-color --size --all
+cd build
+cpack
 ```
 
-Sample Output
+The resulting artifacts will be placed in the `build/` directory.
 
-```
-.
-├── src
-│   ├── main.cpp (5.2 KB)
-│   └── utils.cpp (2.3 KB)
-├── README.md (1.1 KB)
-└── build (12.5 KB)
-```
+## License
 
-With git status:
+This project is distributed under the Mozilla Public License v2.0. See the
+`LICENSE` file for details.
 
-```
-.
-├── src
-│   ├── main.cpp (5.2 KB) (M)
-│   └── utils.cpp (2.3 KB)
-├── README.md (1.1 KB) (M)
-└── new_file.txt (200 B) (U)
-```
+## Contributing
 
-# License
+Contributions are welcome. Please:
 
-This project is licensed under the Mozilla Public License Version 2.0. See the LICENSE file for details.
+1. Fork the repository and create a clear, focused branch for your change.
+2. Run code formatting and tests locally before opening a pull request.
+3. Write a brief description of the change and the rationale in the PR.
+
+Maintainers will review PRs and request changes where necessary.

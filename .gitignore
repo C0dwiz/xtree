@@ -42,3 +42,6 @@
 
 # xtree
 xtree
+
+# Build files
+build/
