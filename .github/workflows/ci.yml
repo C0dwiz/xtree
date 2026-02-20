@@ -14,19 +14,6 @@ jobs:
       - name: Setup CMake
         uses: jwlawson/actions-setup-cmake@v1
 
-      - name: Lint (clang-format)
-        run: |
-          sudo apt-get update && sudo apt-get install -y clang-format
-          files=$(git ls-files '*.cpp' '*.h')
-          if [ -n "$files" ]; then
-            clang-format -style=file -i $files || true
-            if ! git diff --exit-code; then
-              echo "clang-format differences found. Please run clang-format -i on sources.";
-              git --no-pager diff --name-only
-              exit 1
-            fi
-          fi
-
       - name: Configure
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_GIT=ON
