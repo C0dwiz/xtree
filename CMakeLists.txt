@@ -15,9 +15,6 @@ else()
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-include_directories(${CMAKE_SOURCE_DIR}/include)
-include_directories(${CMAKE_SOURCE_DIR}/src)
-
 set(SOURCES
   ${CMAKE_SOURCE_DIR}/main.cpp
   ${CMAKE_SOURCE_DIR}/src/xtree_tools/printer.cpp
@@ -32,6 +29,7 @@ else()
 endif()
 
 add_executable(xtree ${SOURCES})
+target_include_directories(xtree PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/src)
 
 install(TARGETS xtree RUNTIME DESTINATION bin)
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/include/ DESTINATION include)
