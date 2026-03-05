@@ -4,228 +4,256 @@
 
 #include "xtree/git.h"
 
-#include <cstdio>
-#include <memory>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+#include <array>
+#include <optional>
 #include <sstream>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace xtree {
 
 namespace fs = std::filesystem;
 
-static bool findRepoRoot(fs::path cur, fs::path &repo_root)
-{
-  while (true)
-  {
-    if (fs::exists(cur / ".git") && fs::is_directory(cur / ".git"))
-    {
-      repo_root = cur;
-      return true;
-    }
-    if (cur == cur.root_path() || cur == cur.parent_path())
-      return false;
-    cur = cur.parent_path();
-  }
-}
+namespace {
 
-static std::string runCommandCapture(const std::string &cmd)
-{
-  std::unique_ptr<FILE, int (*)(FILE *)> pipe(popen(cmd.c_str(), "r"), pclose);
-  if (!pipe)
-    return {};
-  
-  std::string res;
-  res.reserve(4096);
-  char buffer[1024];
-  size_t bytes_read;
-  while ((bytes_read = fread(buffer, 1, sizeof(buffer), pipe.get())) > 0)
-    res.append(buffer, bytes_read);
-  return res;
-}
+struct ParsedStatusEntry {
+  std::string path;
+  FileGitInfo info;
+};
 
-static std::string trim(const std::string &s)
-{
+std::string trim(const std::string &s) {
   size_t start = s.find_first_not_of(" \t\n\r");
-  if (start == std::string::npos) return "";
+  if (start == std::string::npos)
+    return "";
   size_t end = s.find_last_not_of(" \t\n\r");
   return s.substr(start, end - start + 1);
 }
 
-bool get_git_status(const fs::path &target, fs::path &repo_root,
-                  std::unordered_map<std::string, FileGitInfo> &fileStatus,
-                  std::unordered_map<std::string, char> &dirStatus,
-                  std::vector<std::string> &branches)
-{
-  if (!findRepoRoot(target, repo_root))
-    return false;
+std::string run_command_capture(const std::vector<std::string> &args, bool merge_stderr = false) {
+  if (args.empty())
+    return {};
 
-  const std::string repoPath = repo_root.string();
+  int pipefd[2];
+  if (pipe(pipefd) != 0)
+    return {};
+
+  const pid_t pid = fork();
+  if (pid < 0) {
+    close(pipefd[0]);
+    close(pipefd[1]);
+    return {};
+  }
+
+  if (pid == 0) {
+    dup2(pipefd[1], STDOUT_FILENO);
+    if (merge_stderr)
+      dup2(pipefd[1], STDERR_FILENO);
+    close(pipefd[0]);
+    close(pipefd[1]);
+
+    std::vector<char *> argv;
+    argv.reserve(args.size() + 1);
+    for (const auto &arg : args)
+      argv.push_back(const_cast<char *>(arg.c_str()));
+    argv.push_back(nullptr);
+
+    execvp(argv[0], argv.data());
+    _exit(127);
+  }
+
+  close(pipefd[1]);
+
+  std::string res;
+  res.reserve(4096);
+  std::array<char, 1024> buffer{};
+  ssize_t bytes_read;
+  while ((bytes_read = read(pipefd[0], buffer.data(), buffer.size())) > 0)
+    res.append(buffer.data(), static_cast<size_t>(bytes_read));
+
+  close(pipefd[0]);
+
+  int status = 0;
+  if (waitpid(pid, &status, 0) < 0)
+    return {};
+
+  if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
+    return {};
+
+  return res;
+}
+
+bool resolve_repo_root(const std::filesystem::path &target, std::filesystem::path &repo_root) {
+  const std::string out =
+      run_command_capture({"git", "-C", target.string(), "rev-parse", "--show-toplevel"}, true);
+  const std::string root = trim(out);
+  if (root.empty())
+    return false;
+  repo_root = fs::path(root);
+  return true;
+}
+
+void collect_branches(const std::string &repo_path, std::vector<std::string> &branches) {
+  branches.clear();
   branches.reserve(16);
 
-  std::string brcmd = "git -C \"" + repoPath + "\" branch --all --no-color";
-  std::string brout = runCommandCapture(brcmd);
-  std::istringstream brss(brout);
-  std::string brline;
-  while (std::getline(brss, brline))
-  {
-    if (brline.empty()) continue;
-    
-    std::string b = trim(brline);
-    if (!b.empty() && b[0] == '*') b = b.substr(1);
-    if (!b.empty()) branches.push_back(b);
-  }
+  const std::string output =
+      run_command_capture({"git", "-C", repo_path, "branch", "--all", "--no-color"});
 
-  std::string cmd = "git -C \"" + repoPath + "\" status --porcelain";
-  std::string result = runCommandCapture(cmd);
-
-  std::istringstream iss(result);
+  std::istringstream stream(output);
   std::string line;
-  fileStatus.reserve(128);
-  while (std::getline(iss, line))
-  {
-    if (line.empty())
+  while (std::getline(stream, line)) {
+    std::string branch = trim(line);
+    if (branch.empty())
       continue;
-    FileGitInfo info;
-    std::string path;
-    if (line.size() >= 2 && line.compare(0, 2, "??") == 0)
-    {
-      info.status = 'U';
-      info.x = ' ';
-      info.y = '?';
-      path = line.substr(3);
+    if (branch.front() == '*') {
+      branch.erase(0, 1);
+      branch = trim(branch);
     }
-    else if (line.size() >= 3)
-    {
-      info.x = line[0];
-      info.y = line[1];
-      info.status = (info.y != ' ') ? info.y : info.x;
-      path = line.substr(3);
-      size_t arrow = path.find(" -> ");
-      if (arrow != std::string::npos)
-        path = path.substr(arrow + 4);
-    }
-    path = trim(path);
-    if (!path.empty())
-      fileStatus[std::move(path)] = info;
+    if (!branch.empty())
+      branches.push_back(std::move(branch));
+  }
+}
+
+std::optional<ParsedStatusEntry> parse_status_line(const std::string &line) {
+  if (line.size() < 3)
+    return std::nullopt;
+
+  ParsedStatusEntry entry;
+
+  if (line.compare(0, 2, "??") == 0) {
+    entry.info.status = 'U';
+    entry.info.x = ' ';
+    entry.info.y = '?';
+    entry.path = line.substr(3);
+  } else if (line.compare(0, 2, "!!") == 0) {
+    entry.info.status = 'I';
+    entry.info.ignored = true;
+    entry.path = line.substr(3);
+  } else {
+    entry.info.x = line[0];
+    entry.info.y = line[1];
+    entry.info.status = (entry.info.y != ' ') ? entry.info.y : entry.info.x;
+    entry.path = line.substr(3);
+
+    const size_t arrow_pos = entry.path.find(" -> ");
+    if (arrow_pos != std::string::npos)
+      entry.path = entry.path.substr(arrow_pos + 4);
   }
 
- 
-  std::string igncmd = "git -C \"" + repoPath + "\" ls-files --others -i --exclude-standard";
-  std::string ignout = runCommandCapture(igncmd);
-  std::istringstream ignss(ignout);
-  while (std::getline(ignss, line))
-  {
-    line = trim(line);
-    if (line.empty()) continue;
-    
-    auto it = fileStatus.find(line);
-    if (it == fileStatus.end()) {
-      FileGitInfo info;
-      info.ignored = true;
-      info.status = 'I';
-      fileStatus[line] = std::move(info);
-    } else {
-      it->second.ignored = true;
-      it->second.status = 'I';
-    }
+  entry.path = trim(entry.path);
+  if (entry.path.empty())
+    return std::nullopt;
+
+  return entry;
+}
+
+void collect_file_status(const std::string &repo_path,
+                         std::unordered_map<std::string, FileGitInfo> &file_status) {
+  file_status.clear();
+  file_status.reserve(128);
+
+  const std::string output =
+      run_command_capture({"git", "-C", repo_path, "status", "--porcelain=1", "--ignored"});
+
+  std::istringstream stream(output);
+  std::string line;
+  while (std::getline(stream, line)) {
+    const auto parsed = parse_status_line(line);
+    if (!parsed.has_value())
+      continue;
+    file_status[parsed->path] = parsed->info;
   }
+}
 
-  std::vector<std::string> filePaths;
-  filePaths.reserve(fileStatus.size());
-  for (const auto &kv : fileStatus)
-    filePaths.push_back(kv.first);
+void fill_last_commit_metadata(const std::string &repo_path,
+                               std::unordered_map<std::string, FileGitInfo> &file_status) {
+  for (auto &kv : file_status) {
+    if (kv.second.ignored)
+      continue;
 
-  constexpr size_t BATCH_SIZE = 50;
-  for (size_t i = 0; i < filePaths.size(); i += BATCH_SIZE) {
-    size_t end = std::min(i + BATCH_SIZE, filePaths.size());
-    std::string fileList;
-    for (size_t j = i; j < end; ++j) {
-      if (!fileList.empty()) fileList += " ";
-      fileList += "\"" + filePaths[j] + "\"";
-    }
-    
-    std::string logcmd = "git -C \"" + repoPath + "\" log -1 --format='%an|%ad' --date=short -- " + fileList + " 2>/dev/null";
-    std::string out = runCommandCapture(logcmd);
-    
-    if (out.empty() || out.find('\n') != std::string::npos) {
-      for (size_t j = i; j < end; ++j) {
-        std::string singlecmd = "git -C \"" + repoPath + "\" log -1 --format='%an|%ad' --date=short -- \"" + filePaths[j] + "\" 2>/dev/null";
-        std::string singleout = runCommandCapture(singlecmd);
-        
-        if (!singleout.empty()) {
-          size_t pipe = singleout.find('|');
-          if (pipe != std::string::npos) {
-            std::string author = singleout.substr(0, pipe);
-            std::string date = singleout.substr(pipe + 1);
-            date = trim(date);
-            
-            if (date.size() >= 10)
-              date = date.substr(0, 10);
-            
-            auto it = fileStatus.find(filePaths[j]);
-            if (it != fileStatus.end()) {
-              it->second.author = author;
-              it->second.date = date;
-            }
-          }
-        }
-      }
-    } else if (!out.empty()) {
-      size_t pipe = out.find('|');
-      if (pipe != std::string::npos) {
-        std::string author = out.substr(0, pipe);
-        std::string date = out.substr(pipe + 1);
-        date = trim(date);
-        
-        if (date.size() >= 10)
-          date = date.substr(0, 10);
-        
-        for (size_t j = i; j < end; ++j) {
-          auto it = fileStatus.find(filePaths[j]);
-          if (it != fileStatus.end()) {
-            it->second.author = author;
-            it->second.date = date;
-          }
-        }
-      }
-    }
+    const std::string output = run_command_capture(
+        {"git", "-C", repo_path, "log", "-1", "--format=%an|%ad", "--date=short", "--", kv.first});
+    if (output.empty())
+      continue;
+
+    const std::string meta = trim(output);
+    const size_t delimiter = meta.find('|');
+    if (delimiter == std::string::npos)
+      continue;
+
+    kv.second.author = meta.substr(0, delimiter);
+    kv.second.date = trim(meta.substr(delimiter + 1));
+    if (kv.second.date.size() > 10)
+      kv.second.date.resize(10);
   }
+}
 
-  auto priority = [](char c)
-  {
-    switch (c)
-    {
-    case 'M': return 5;
-    case 'A': return 4;
-    case 'D': return 3;
-    case 'R': return 2;
-    case 'C': return 1;
-    case 'U': return 0;
-    case 'I': return -2;
-    default: return -1;
-    }
-  };
+int status_priority(char c) {
+  switch (c) {
+  case 'M':
+    return 5;
+  case 'A':
+    return 4;
+  case 'D':
+    return 3;
+  case 'R':
+    return 2;
+  case 'C':
+    return 1;
+  case 'U':
+    return 0;
+  case 'I':
+    return -2;
+  default:
+    return -1;
+  }
+}
 
-  
-  for (const auto &pair : fileStatus)
-  {
-    const std::string &file = pair.first;
-    char st = pair.second.status;
-    std::string fullPath = file;
-    while (true)
-    {
-      size_t pos = fullPath.find_last_of('/');
+void build_directory_status(const std::unordered_map<std::string, FileGitInfo> &file_status,
+                            std::unordered_map<std::string, char> &dir_status) {
+  dir_status.clear();
+
+  for (const auto &pair : file_status) {
+    const char status = pair.second.status;
+    std::string full_path = pair.first;
+
+    while (true) {
+      const size_t pos = full_path.find_last_of('/');
       if (pos == std::string::npos)
-        fullPath = "";
+        full_path.clear();
       else
-        fullPath = fullPath.substr(0, pos);
-      auto it = dirStatus.find(fullPath);
-      if (it == dirStatus.end() || priority(st) > priority(it->second))
-        dirStatus[fullPath] = st;
-      if (fullPath.empty())
+        full_path = full_path.substr(0, pos);
+
+      auto it = dir_status.find(full_path);
+      if (it == dir_status.end() || status_priority(status) > status_priority(it->second))
+        dir_status[full_path] = status;
+
+      if (full_path.empty())
         break;
     }
   }
+}
+
+} // namespace
+
+bool get_git_status(const std::filesystem::path &target, std::filesystem::path &repo_root,
+                    std::unordered_map<std::string, FileGitInfo> &fileStatus,
+                    std::unordered_map<std::string, char> &dirStatus,
+                    std::vector<std::string> &branches) {
+  if (!resolve_repo_root(target, repo_root))
+    return false;
+
+  const std::string repo_path = repo_root.string();
+
+  collect_branches(repo_path, branches);
+  collect_file_status(repo_path, fileStatus);
+  fill_last_commit_metadata(repo_path, fileStatus);
+  build_directory_status(fileStatus, dirStatus);
 
   return true;
 }

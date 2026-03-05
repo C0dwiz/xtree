@@ -11,8 +11,6 @@
 
 namespace xtree {
 
-namespace fs = std::filesystem;
-
 struct FileGitInfo {
   char x = ' ';
   char y = ' ';
@@ -22,7 +20,7 @@ struct FileGitInfo {
   std::string date;
 };
 
-bool get_git_status(const fs::path &target, fs::path &repo_root,
+bool get_git_status(const std::filesystem::path &target, std::filesystem::path &repo_root,
                     std::unordered_map<std::string, FileGitInfo> &fileStatus,
                     std::unordered_map<std::string, char> &dirStatus,
                     std::vector<std::string> &branches);

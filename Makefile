@@ -6,7 +6,7 @@ LDFLAGS ?=
 LDLIBS ?=
 
 SRCS := main.cpp $(filter-out src/xtree_tools/git_stub.cpp,$(wildcard src/xtree_tools/*.cpp))
-OBJS := $(patsubst %.cpp,build/%.o,$(notdir $(SRCS)))
+OBJS := $(SRCS:%.cpp=build/%.o)
 
 TARGET := xtree
 
@@ -20,13 +20,9 @@ dirs:
 $(TARGET): dirs $(OBJS)
 	$(CXX) $(LDFLAGS) -o $@ $(OBJS) $(LDLIBS)
 
-define make_obj_rule
-build/$(notdir $(1:.cpp=.o)): $(1)
-	@mkdir -p build
-	$(CXX) $(CXXFLAGS) -c $(1) -o $$@
-endef
-
-$(foreach src,$(SRCS),$(eval $(call make_obj_rule,$(src))))
+build/%.o: %.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:
 	rm -rf build $(TARGET)

@@ -7,8 +7,8 @@
 #include "xtree/options.h"
 #include <filesystem>
 #include <string>
-#include <vector>
 #include <unordered_map>
+#include <vector>
 
 namespace xtree {
 
@@ -27,18 +27,18 @@ std::string human_size(uintmax_t size);
 std::string normalize_path(const std::string &p);
 
 bool should_ignore(const fs::path &path, const Options &opts);
-std::vector<fs::directory_entry> get_filtered_entries(const fs::path &path,
-                                                    const Options &opts);
+std::vector<fs::directory_entry> get_filtered_entries(const fs::path &path, const Options &opts);
 
 uintmax_t compute_dir_size(const fs::path &path, const Options &opts,
-                         std::unordered_map<std::string, uintmax_t> &dirSizes);
+                           std::unordered_map<std::string, uintmax_t> &dirSizes);
 
-void compute_project_stats(const fs::path &path, const Options &opts,
-                          uintmax_t &fileCount, uintmax_t &lineCount);
+void compute_project_stats(const fs::path &path, const Options &opts, uintmax_t &fileCount,
+                           uintmax_t &lineCount);
 
-void parse_ignore_patterns(const std::string &input,
-                         std::vector<std::string> &patterns);
+void parse_ignore_patterns(const std::string &input, std::vector<std::string> &patterns);
 
 } // namespace xtree
 
-inline void printHelp() { xtree::print_help(); }
+inline void printHelp() {
+  xtree::print_help();
+}

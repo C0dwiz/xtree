@@ -10,6 +10,8 @@
 #include <filesystem>
 #include <functional>
 #include <iostream>
+#include <sstream>
+#include <stdexcept>
 #include <unordered_map>
 
 namespace fs = std::filesystem;
@@ -27,6 +29,22 @@ int main(int argc, char *argv[]) {
 
   Options opts;
   fs::path target = ".";
+  bool target_set = false;
+
+  auto parse_depth_arg = [&](const std::string &raw, Options &o) -> bool {
+    try {
+      size_t pos = 0;
+      int value = std::stoi(raw, &pos);
+      if (pos != raw.size() || value < 0) {
+        throw std::invalid_argument("invalid depth");
+      }
+      o.maxDepth = value;
+      return true;
+    } catch (const std::exception &) {
+      std::cerr << "Invalid value for --depth: '" << raw << "'. Expected a non-negative integer.\n";
+      return false;
+    }
+  };
 
   const std::unordered_map<std::string, std::function<void(Options &, int &, int, char **)>>
       option_handlers = {
@@ -37,11 +55,6 @@ int main(int argc, char *argv[]) {
           {"--git", [](Options &o, int &, int, char **) { o.gitStatus = true; }},
           {"--stats", [](Options &o, int &, int, char **) { o.showStats = true; }},
           {"--du", [](Options &o, int &, int, char **) { o.diskUsage = true; }},
-          {"--depth",
-           [](Options &o, int &i, int argc, char **argv) {
-             if (i + 1 < argc)
-               o.maxDepth = std::stoi(argv[++i]);
-           }},
           {"--ignore", [](Options &o, int &i, int argc, char **argv) {
              if (i + 1 < argc)
                parse_ignore_patterns(argv[++i], o.ignorePatterns);
@@ -50,16 +63,48 @@ int main(int argc, char *argv[]) {
   for (int i = 1; i < argc; ++i) {
     std::string arg = argv[i];
 
+    if (arg.rfind("--depth=", 0) == 0) {
+      if (!parse_depth_arg(arg.substr(8), opts))
+        return 2;
+      continue;
+    }
+
+    if (arg == "--depth") {
+      if (i + 1 >= argc) {
+        std::cerr << "Missing value for --depth.\n";
+        return 2;
+      }
+      if (!parse_depth_arg(argv[++i], opts))
+        return 2;
+      continue;
+    }
+
     if (arg.rfind("--ignore=", 0) == 0) {
       parse_ignore_patterns(arg.substr(9), opts.ignorePatterns);
       continue;
+    }
+
+    if (arg == "--ignore" && i + 1 >= argc) {
+      std::cerr << "Missing value for --ignore.\n";
+      return 2;
     }
 
     auto it = option_handlers.find(arg);
     if (it != option_handlers.end()) {
       it->second(opts, i, argc, argv);
     } else {
-      target = arg;
+      if (!arg.empty() && arg[0] == '-') {
+        std::cerr << "Unknown option: " << arg << "\n";
+        std::cerr << "Use --help to see available options.\n";
+        return 2;
+      }
+      if (!target_set) {
+        target = arg;
+        target_set = true;
+      } else {
+        std::cerr << "Unexpected extra positional argument: " << arg << "\n";
+        return 2;
+      }
     }
   }
 

@@ -5,6 +5,7 @@
 #include "xtree/utils.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 #include <exception>
 #include <fstream>
@@ -39,7 +40,7 @@ void print_help() {
                "  --du                Show directory sizes (total of all files "
                "inside)\n"
                "  --follow-links      Follow symbolic links\n"
-               "  --stats             Show total file and line counts in the\n"
+               "  --stats             Show total file and line counts\n"
                "\n"
                "If PATH is omitted, current directory is used.\n"
                "\n"
@@ -105,13 +106,17 @@ bool should_ignore(const fs::path &path, const Options &opts) {
   if (opts.ignorePatterns.empty())
     return false;
   std::string filename = path.filename().string();
+  std::transform(filename.begin(), filename.end(), filename.begin(),
+                 [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
 
   if (path.has_extension()) {
     std::string ext = path.extension().string();
     if (!ext.empty() && ext[0] == '.')
       ext = ext.substr(1);
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+                   [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
     for (const auto &pat : opts.ignorePatterns) {
-      if (ext == pat)
+      if (ext == pat || (pat.size() > 1 && pat.front() == '.' && ext == pat.substr(1)))
         return true;
     }
   }
@@ -165,30 +170,84 @@ uintmax_t compute_dir_size(const fs::path &root, const Options &opts,
                            std::unordered_map<std::string, uintmax_t> &dirSizes) {
   uintmax_t total = 0;
 
-  for (fs::recursive_directory_iterator
-           it(root, opts.followSymlinks ? fs::directory_options::follow_directory_symlink
-                                        : fs::directory_options::none),
-       end;
-       it != end; ++it) {
-    try {
-      if (it->is_regular_file())
-        total += it->file_size();
-    } catch (const std::exception &e) {
-      std::cerr << "Warning: Cannot access file '" << it->path().string() 
-                << "': " << e.what() << "\n";
-    } catch (...) {
-      std::cerr << "Warning: Unknown error accessing file '" 
-                << it->path().string() << "'\n";
+  std::error_code ec;
+  const auto options = fs::directory_options::skip_permission_denied |
+                       (opts.followSymlinks ? fs::directory_options::follow_directory_symlink
+                                            : fs::directory_options::none);
+
+  fs::recursive_directory_iterator it(root, options, ec), end;
+  if (ec) {
+    std::cerr << "Warning: Cannot read directory: " << root << " (" << ec.message() << ")\n";
+    return 0;
+  }
+
+  for (; it != end; it.increment(ec)) {
+    if (ec) {
+      std::cerr << "Warning: Cannot access entry: " << it->path().string() << " (" << ec.message()
+                << ")\n";
+      ec.clear();
+      continue;
+    }
+
+    const fs::path p = it->path();
+    const std::string fname = p.filename().string();
+
+    if (!opts.showHidden && !fname.empty() && fname.front() == '.') {
+      if (it->is_directory(ec) && !ec)
+        it.disable_recursion_pending();
+      ec.clear();
+      continue;
+    }
+
+    if (!opts.followSymlinks && it->is_symlink(ec) && !ec) {
+      if (it->is_directory(ec) && !ec)
+        it.disable_recursion_pending();
+      ec.clear();
+      continue;
+    }
+
+    if (it->is_directory(ec)) {
+      if (ec) {
+        ec.clear();
+      } else if (should_ignore(p, opts)) {
+        it.disable_recursion_pending();
+      }
+      continue;
+    }
+
+    if (!it->is_regular_file(ec) || ec) {
+      ec.clear();
+      continue;
+    }
+
+    if (should_ignore(p, opts)) {
+      continue;
+    }
+
+    const uintmax_t sz = it->file_size(ec);
+    if (ec) {
+      std::cerr << "Warning: Cannot access file '" << p.string() << "': " << ec.message() << "\n";
+      ec.clear();
+      continue;
+    }
+
+    total += sz;
+    fs::path cur = p.parent_path();
+    while (!cur.empty() && cur != cur.root_path()) {
+      dirSizes[cur.string()] += sz;
+      if (cur == root)
+        break;
+      cur = cur.parent_path();
     }
   }
 
-  dirSizes[root.string()] = total;
+  dirSizes.emplace(root.string(), 0);
   return total;
 }
 
 void parse_ignore_patterns(const std::string &input, std::vector<std::string> &patterns) {
-  patterns.clear();
-  patterns.reserve(8);
+  if (patterns.capacity() < 8)
+    patterns.reserve(8);
 
   std::stringstream ss(input);
   std::string token;
@@ -199,7 +258,11 @@ void parse_ignore_patterns(const std::string &input, std::vector<std::string> &p
     size_t end = token.find_last_not_of(" \t\n\r");
 
     if (start <= end) {
-      patterns.emplace_back(token.substr(start, end - start + 1));
+      std::string pat = token.substr(start, end - start + 1);
+      std::transform(pat.begin(), pat.end(), pat.begin(),
+                     [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+      if (!pat.empty() && std::find(patterns.begin(), patterns.end(), pat) == patterns.end())
+        patterns.emplace_back(std::move(pat));
     }
   }
 }
@@ -221,9 +284,15 @@ void compute_project_stats(const fs::path &path, const Options &opts, uintmax_t 
         ++fileCount;
         std::ifstream in(entry.path());
         if (in) {
-          lineCount += std::count(std::istreambuf_iterator<char>(in),
-                                  std::istreambuf_iterator<char>(), '\n') +
-                       1;
+          const auto begin = std::istreambuf_iterator<char>(in);
+          const auto end = std::istreambuf_iterator<char>();
+          const uintmax_t newlines = std::count(begin, end, '\n');
+          in.clear();
+          in.seekg(0, std::ios::end);
+          const auto size = in.tellg();
+          lineCount += newlines;
+          if (size > 0)
+            ++lineCount;
         }
       }
     } catch (const std::exception &e) {

@@ -1,8 +1,6 @@
 cmake_minimum_required(VERSION 3.10)
 project(xtree LANGUAGES CXX)
 
-cmake_minimum_required(VERSION 3.10)
-
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -49,11 +47,11 @@ if(IS_DIRECTORY "${CMAKE_SOURCE_DIR}/tests")
   add_subdirectory(tests)
 endif()
 
-include(CPack)
 set(CPACK_PACKAGE_NAME "xtree")
 set(CPACK_PACKAGE_VENDOR "xtree")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "xtree - directory tree with git info")
 set(CPACK_PACKAGE_VERSION "0.1.0")
 set(CPACK_GENERATOR "TGZ;DEB")
 set(CPACK_DEBIAN_PACKAGE_MAINTAINER "you@example.com")
+include(CPack)
 
