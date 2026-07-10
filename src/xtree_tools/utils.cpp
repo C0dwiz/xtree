@@ -12,6 +12,10 @@
 #include <iostream>
 #include <sstream>
 
+#include <cstdio>
+#include <cstring>
+#include <system_error>
+
 namespace xtree {
 
 namespace fs = std::filesystem;
@@ -267,39 +271,89 @@ void parse_ignore_patterns(const std::string &input, std::vector<std::string> &p
   }
 }
 
-void compute_project_stats(const fs::path &path, const Options &opts, uintmax_t &fileCount,
-                           uintmax_t &lineCount) {
-  fileCount = 0;
-  lineCount = 0;
-  auto entries = get_filtered_entries(path, opts);
+inline uintmax_t count_lines_fast(const fs::path& filepath) {
+  // rb flag for ignore \r\n in windows
+  FILE* file = std::fopen(filepath.string().c_str(), "rb");
+  if (!file) return 0;
 
-  for (const auto &entry : entries) {
-    try {
-      if (entry.is_directory() && (!fs::is_symlink(entry.path()) || opts.followSymlinks)) {
-        uintmax_t fc = 0, lc = 0;
-        compute_project_stats(entry.path(), opts, fc, lc);
-        fileCount += fc;
-        lineCount += lc;
-      } else if (entry.is_regular_file()) {
-        ++fileCount;
-        std::ifstream in(entry.path());
-        if (in) {
-          const auto begin = std::istreambuf_iterator<char>(in);
-          const auto end = std::istreambuf_iterator<char>();
-          const uintmax_t newlines = std::count(begin, end, '\n');
-          in.clear();
-          in.seekg(0, std::ios::end);
-          const auto size = in.tellg();
-          lineCount += newlines;
-          if (size > 0)
-            ++lineCount;
-        }
-      }
-    } catch (const std::exception &e) {
-      std::cerr << "Warning: Failed to process '" << entry.path().string() << "': " << e.what()
-                << "\n";
+  // 128kb for l1/l2 cache
+  constexpr size_t BUFFER_SIZE = 131072;
+  char buffer[BUFFER_SIZE];
+
+  uintmax_t lines = 0;
+  size_t bytes_read;
+  bool is_empty = true;
+  bool ends_with_newline = true;
+
+  while ((bytes_read = std::fread(buffer, 1, BUFFER_SIZE, file)) > 0) {
+    is_empty = false;
+    char* p = buffer;
+    char* end = buffer + bytes_read;
+    ends_with_newline = (*(end - 1) == '\n');
+
+    while ((p = static_cast<char*>(std::memchr(p, '\n', end - p))) != nullptr) {
+      ++lines;
+      ++p;
     }
   }
+  std::fclose(file);
+
+  if (!is_empty && !ends_with_newline) {
+    ++lines;
+  }
+
+  return lines;
 }
 
+void compute_project_stats(const fs::path &root, const Options &opts, uintmax_t &fileCount, uintmax_t &lineCount) {
+  fileCount = 0;
+  lineCount = 0;
+
+  std::error_code ec;
+  const auto options = fs::directory_options::skip_permission_denied | (opts.followSymlinks ? fs::directory_options::follow_directory_symlink : fs::directory_options::none);
+
+  fs::recursive_directory_iterator it(root, options, ec), end;
+  if (ec) {
+    std::cerr << "Warning: Cannot read directory for stats: " << root << " (" << ec.message() << ")\n";
+    return;
+  }
+
+  for (; it != end; it.increment(ec)) {
+    if (ec) {
+      ec.clear();
+      continue;
+    }
+
+    const fs::path p = it->path();
+    const std::string fname = p.filename().string();
+
+    if (!opts.showHidden && !fname.empty() && fname.front() == '.') {
+      if (it->is_directory(ec) && !ec) {
+        it.disable_recursion_pending();
+      }
+      ec.clear();
+      continue;
+    }
+
+    if (it->is_directory(ec)) {
+      if (!ec && should_ignore(p, opts)) {
+        it.disable_recursion_pending();
+      }
+      ec.clear();
+      continue;
+    }
+
+    if (!it->is_regular_file(ec) || ec) {
+      ec.clear();
+      continue;
+    }
+
+    if (should_ignore(p, opts)) {
+      continue;
+    }
+
+    ++fileCount;
+    lineCount += count_lines_fast(p);
+  }
+}
 } // namespace xtree
