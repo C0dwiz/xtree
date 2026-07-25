@@ -129,6 +129,12 @@ Limit output to two directory levels and disable color:
 ./build/xtree --depth 2 --no-color
 ```
 
+Use rules from `.gitignore` files, including nested rules and negated patterns:
+
+```bash
+./build/xtree --gitignore --all --stats
+```
+
 ## Development
 
 - Code formatting: a `.clang-format` file is present. Format tracked source
