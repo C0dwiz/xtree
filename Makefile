@@ -10,7 +10,7 @@ OBJS := $(SRCS:%.cpp=build/%.o)
 
 TARGET := xtree
 
-.PHONY: all clean install dirs
+.PHONY: all clean install dirs test bench
 
 all: $(TARGET)
 
@@ -30,6 +30,12 @@ clean:
 install: $(TARGET)
 	install -d $(DESTDIR)/usr/local/bin
 	install -m 0755 $(TARGET) $(DESTDIR)/usr/local/bin/$(TARGET)
+
+test: $(TARGET)
+	./tests/cli_test.sh ./$(TARGET)
+
+bench: $(TARGET)
+	./benchs/bench.sh
 
 show:
 	@echo CXX=$(CXX)

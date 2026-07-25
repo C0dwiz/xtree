@@ -16,6 +16,7 @@ Table of Contents
 - [Options](#options)
 - [Examples](#examples)
 - [Development](#development)
+- [Benchmarks](#benchmarks)
 - [Packaging](#packaging)
 - [License](#license)
 - [Contributing](#contributing)
@@ -35,7 +36,8 @@ set up for reproducible builds and automated testing.
 - Git integration: show file status (M/A/D/R/C/U), ignored files, branches,
  and last commit author/date
 - Project statistics option (`--stats`) to report total files and total lines
-- Respect `.gitignore`-style exclusions via `--ignore`
+- Respect `.gitignore` rules with `--gitignore`, including nested files, `**`, and negation rules
+- Custom exclusions via `--ignore`
 - Cross-platform (uses std::filesystem) and small dependency surface
 
 ## Requirements
@@ -102,6 +104,7 @@ complete set.
 | `--no-color` | Disable ANSI color codes in output |
 | `--depth N` | Limit recursion to N levels |
 | `--ignore="ext, name"` | Ignore files by extension or exact name (comma-separated) |
+| `--gitignore` | Ignore files and folders matched by `.gitignore` |
 | `--git` | Enable Git-aware output (status, branches, author/date) |
 | `--follow-links` | Follow symbolic links when descending directories |
 | `--stats` | Print total number of files and total lines at the end |
@@ -135,7 +138,23 @@ Limit output to two directory levels and disable color:
 git ls-files '*.cpp' '*.cc' '*.c' '*.hpp' '*.hh' '*.h' | xargs clang-format -style=file -i
 ```
 
-- Tests are integrated via CTest. Run `ctest` after building.
+- Tests are integrated via CTest. Run `ctest --test-dir build --output-on-failure` after building.
+- A portable CLI test is also available through `make test`.
+
+## Benchmarks
+
+`benchs/bench.sh` compares `xtree` with the standard `tree` command on the same
+reproducible directory tree. It reports average wall time and peak RSS; `tree`
+is skipped cleanly when it is not installed.
+
+```bash
+make bench
+BENCH_DEPTH=6 BENCH_BRANCHES=4 BENCH_FILES=20 BENCH_REPEATS=5 make bench
+```
+
+Set `XTREE_BIN`, `TREE_BIN`, `BENCH_DIR=...`, or `KEEP_BENCH_DIR=1` to override
+the defaults. Benchmark numbers are machine-specific and should not be treated
+as CI thresholds.
 - The project provides a minimal Makefile and a full CMake build that enables
  testing and packaging via CPack.
 

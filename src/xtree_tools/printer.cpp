@@ -16,11 +16,11 @@ void print_tree(const fs::path &path, const Options &opts,
                 const fs::path &repo_root,
                 const std::unordered_map<std::string, FileGitInfo> *fileStatus,
                 const std::unordered_map<std::string, char> *dirStatus, int depth,
-                std::string prefix) {
+                std::string prefix, const GitIgnore *gitIgnore) {
   if (opts.maxDepth != -1 && depth > opts.maxDepth)
     return;
 
-  auto entries = get_filtered_entries(path, opts);
+  auto entries = get_filtered_entries(path, opts, gitIgnore);
   const bool hasGitInfo = fileStatus && dirStatus && !repo_root.empty();
   const fs::path &repo_root_path = repo_root;
 
@@ -57,7 +57,7 @@ void print_tree(const fs::path &path, const Options &opts,
       std::cout << "\n";
 
       print_tree(entry.path(), opts, dirSizes, repo_root_path, fileStatus, dirStatus, depth + 1,
-                 prefix + (isLast ? "    " : "│   "));
+                 prefix + (isLast ? "    " : "│   "), gitIgnore);
     } else {
       if (fileStatus && !key.empty()) {
         auto itfs = fileStatus->find(key);

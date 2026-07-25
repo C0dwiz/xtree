@@ -17,10 +17,12 @@ set(SOURCES
   main.cpp
   src/xtree_tools/printer.cpp
   src/xtree_tools/utils.cpp
+  src/xtree_tools/gitignore.cpp
 )
 
 set(HEADERS
   include/xtree/git.h
+  include/xtree/gitignore.h
   include/xtree/options.h
   include/xtree/printer.h
   include/xtree/utils.h

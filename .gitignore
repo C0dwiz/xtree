@@ -42,6 +42,8 @@
 
 # xtree
 xtree
+!include/xtree/
+!include/xtree/gitignore.h
 
 # Build files
 build/

@@ -16,6 +16,7 @@ struct Options {
   bool showStats = false;
   bool useColor = true;
   bool followSymlinks = false;
+  bool gitIgnore = false;
   std::vector<std::string> ignorePatterns;
   bool gitStatus = false;
   bool diskUsage = false;

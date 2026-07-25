@@ -2,6 +2,7 @@
 #pragma once
 
 #include "xtree/options.h"
+#include "xtree/gitignore.h"
 #include <filesystem>
 #include <string>
 #include <unordered_map>
@@ -17,6 +18,6 @@ void print_tree(const fs::path &path, const Options &opts,
                 const fs::path &repo_root,
                 const std::unordered_map<std::string, FileGitInfo> *fileStatus,
                 const std::unordered_map<std::string, char> *dirStatus, int depth = 0,
-                std::string prefix = "");
+                std::string prefix = "", const GitIgnore *gitIgnore = nullptr);
 
 } // namespace xtree

@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 #include "xtree/git.h"
+#include "xtree/gitignore.h"
 #include "xtree/options.h"
 #include "xtree/printer.h"
 #include "xtree/utils.h"
@@ -12,6 +13,7 @@
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
+#include <memory>
 #include <unordered_map>
 
 namespace fs = std::filesystem;
@@ -53,6 +55,7 @@ int main(int argc, char *argv[]) {
           {"--no-color", [](Options &o, int &, int, char **) { o.useColor = false; }},
           {"--follow-links", [](Options &o, int &, int, char **) { o.followSymlinks = true; }},
           {"--git", [](Options &o, int &, int, char **) { o.gitStatus = true; }},
+          {"--gitignore", [](Options &o, int &, int, char **) { o.gitIgnore = true; }},
           {"--stats", [](Options &o, int &, int, char **) { o.showStats = true; }},
           {"--du", [](Options &o, int &, int, char **) { o.diskUsage = true; }},
           {"--ignore", [](Options &o, int &i, int argc, char **argv) {
@@ -128,17 +131,21 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  std::unique_ptr<GitIgnore> gitIgnore;
+  if (opts.gitIgnore)
+    gitIgnore = std::make_unique<GitIgnore>(target);
+
   std::unordered_map<std::string, uintmax_t> dirSizes;
   if (opts.diskUsage)
-    compute_dir_size(target, opts, dirSizes);
+    compute_dir_size(target, opts, dirSizes, gitIgnore.get());
 
   std::cout << color_blue(target.string(), opts.useColor) << "\n";
   print_tree(target, opts, dirSizes, gitOk ? repo_root : fs::path(), gitOk ? &fileStatus : nullptr,
-             gitOk ? &dirStatus : nullptr);
+             gitOk ? &dirStatus : nullptr, 0, "", gitIgnore.get());
 
   if (opts.showStats) {
     uintmax_t files = 0, lines = 0;
-    compute_project_stats(target, opts, files, lines);
+    compute_project_stats(target, opts, files, lines, gitIgnore.get());
     std::ostringstream ss;
     ss << "Files: " << files << ", Lines: " << lines;
     std::cout << color_gray(ss.str(), opts.useColor) << "\n";

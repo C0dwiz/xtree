@@ -39,6 +39,7 @@ void print_help() {
                "  --depth N           Limit recursion depth (N levels)\n"
                "  --ignore=\"p1, p2\"   Ignore files with given extensions or "
                "folders with exact names (comma-separated)\n"
+               "  --gitignore         Ignore files and folders matched by .gitignore\n"
                "  --git               Show Git status: M(odified), A(dded), "
                "D(eleted), R(enamed), C(opied), U(ntracked)\n"
                "  --du                Show directory sizes (total of all files "
@@ -106,7 +107,10 @@ std::string normalize_path(const std::string &p) {
   return res;
 }
 
-bool should_ignore(const fs::path &path, const Options &opts) {
+bool should_ignore(const fs::path &path, const Options &opts, const GitIgnore *gitIgnore,
+                   bool isDir) {
+  if (gitIgnore && gitIgnore->is_ignored(path, isDir))
+    return true;
   if (opts.ignorePatterns.empty())
     return false;
   std::string filename = path.filename().string();
@@ -131,7 +135,8 @@ bool should_ignore(const fs::path &path, const Options &opts) {
   return false;
 }
 
-std::vector<fs::directory_entry> get_filtered_entries(const fs::path &path, const Options &opts) {
+std::vector<fs::directory_entry> get_filtered_entries(const fs::path &path, const Options &opts,
+                                                      const GitIgnore *gitIgnore) {
   std::vector<fs::directory_entry> entries;
   entries.reserve(64);
 
@@ -144,7 +149,7 @@ std::vector<fs::directory_entry> get_filtered_entries(const fs::path &path, cons
       if (!opts.showHidden && !fname.empty() && fname.front() == '.')
         continue;
 
-      if (should_ignore(p, opts))
+      if (should_ignore(p, opts, gitIgnore, entry.is_directory()))
         continue;
 
       if (!opts.followSymlinks && entry.is_symlink())
@@ -171,7 +176,8 @@ std::vector<fs::directory_entry> get_filtered_entries(const fs::path &path, cons
 }
 
 uintmax_t compute_dir_size(const fs::path &root, const Options &opts,
-                           std::unordered_map<std::string, uintmax_t> &dirSizes) {
+                           std::unordered_map<std::string, uintmax_t> &dirSizes,
+                           const GitIgnore *gitIgnore) {
   uintmax_t total = 0;
 
   std::error_code ec;
@@ -213,7 +219,7 @@ uintmax_t compute_dir_size(const fs::path &root, const Options &opts,
     if (it->is_directory(ec)) {
       if (ec) {
         ec.clear();
-      } else if (should_ignore(p, opts)) {
+      } else if (should_ignore(p, opts, gitIgnore, true)) {
         it.disable_recursion_pending();
       }
       continue;
@@ -224,7 +230,7 @@ uintmax_t compute_dir_size(const fs::path &root, const Options &opts,
       continue;
     }
 
-    if (should_ignore(p, opts)) {
+    if (should_ignore(p, opts, gitIgnore, false)) {
       continue;
     }
 
@@ -305,7 +311,8 @@ inline uintmax_t count_lines_fast(const fs::path& filepath) {
   return lines;
 }
 
-void compute_project_stats(const fs::path &root, const Options &opts, uintmax_t &fileCount, uintmax_t &lineCount) {
+void compute_project_stats(const fs::path &root, const Options &opts, uintmax_t &fileCount,
+                           uintmax_t &lineCount, const GitIgnore *gitIgnore) {
   fileCount = 0;
   lineCount = 0;
 
@@ -336,7 +343,7 @@ void compute_project_stats(const fs::path &root, const Options &opts, uintmax_t 
     }
 
     if (it->is_directory(ec)) {
-      if (!ec && should_ignore(p, opts)) {
+      if (!ec && should_ignore(p, opts, gitIgnore, true)) {
         it.disable_recursion_pending();
       }
       ec.clear();
@@ -348,7 +355,7 @@ void compute_project_stats(const fs::path &root, const Options &opts, uintmax_t 
       continue;
     }
 
-    if (should_ignore(p, opts)) {
+    if (should_ignore(p, opts, gitIgnore, false)) {
       continue;
     }
 

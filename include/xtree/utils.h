@@ -5,6 +5,7 @@
 #pragma once
 
 #include "xtree/options.h"
+#include "xtree/gitignore.h"
 #include <filesystem>
 #include <string>
 #include <unordered_map>
@@ -26,14 +27,17 @@ std::string color_yellow(const std::string &s, bool color);
 std::string human_size(uintmax_t size);
 std::string normalize_path(const std::string &p);
 
-bool should_ignore(const fs::path &path, const Options &opts);
-std::vector<fs::directory_entry> get_filtered_entries(const fs::path &path, const Options &opts);
+bool should_ignore(const fs::path &path, const Options &opts, const GitIgnore *gitIgnore = nullptr,
+                   bool isDir = false);
+std::vector<fs::directory_entry> get_filtered_entries(const fs::path &path, const Options &opts,
+                                                      const GitIgnore *gitIgnore = nullptr);
 
 uintmax_t compute_dir_size(const fs::path &path, const Options &opts,
-                           std::unordered_map<std::string, uintmax_t> &dirSizes);
+                           std::unordered_map<std::string, uintmax_t> &dirSizes,
+                           const GitIgnore *gitIgnore = nullptr);
 
 void compute_project_stats(const fs::path &path, const Options &opts, uintmax_t &fileCount,
-                           uintmax_t &lineCount);
+                           uintmax_t &lineCount, const GitIgnore *gitIgnore = nullptr);
 
 void parse_ignore_patterns(const std::string &input, std::vector<std::string> &patterns);
 
